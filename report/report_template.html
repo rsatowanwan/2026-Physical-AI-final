@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>説明資料 PAI最終課題</title>
+<style>
+  @page { size: A4; margin: 13mm 14mm; }
+  body { font-family: "Yu Gothic", "Meiryo", sans-serif; font-size: 9.6pt; line-height: 1.55; color: #1b2430; }
+  h1 { font-size: 17pt; margin: 0 0 2mm; }
+  .lead { color: #4a5a6e; margin: 0 0 4mm; }
+  h2 { font-size: 11.5pt; margin: 5mm 0 1.5mm; padding-left: 2.5mm; border-left: 1.2mm solid #2f6fb0; }
+  ul { margin: 1mm 0 1mm 4.5mm; padding: 0; }
+  li { margin: 0.6mm 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1.5mm 0; }
+  th, td { border: 0.3mm solid #b8c4d2; padding: 1mm 2mm; text-align: left; vertical-align: top; }
+  th { background: #eaf0f7; }
+  .sub { color: #5d6b7c; font-size: 8.4pt; }
+  .na { color: #8a95a3; }
+  .flow { display: flex; align-items: stretch; gap: 1.5mm; margin: 2mm 0; font-size: 9pt; }
+  .flow div.box { flex: 1; border: 0.35mm solid #2f6fb0; border-radius: 1.5mm; padding: 1.5mm 2mm; background: #f4f8fc; text-align: center; }
+  .flow div.arr { align-self: center; color: #2f6fb0; font-weight: bold; }
+  .flow b { display: block; color: #1f4f82; }
+  .grid { display: flex; flex-wrap: wrap; gap: 2mm; }
+  figure { margin: 0; width: 58mm; }
+  figure img { width: 100%; border: 0.3mm solid #b8c4d2; display: block; }
+  figcaption { font-size: 8pt; color: #4a5a6e; }
+  .ex td, .ex th { font-size: 8.6pt; }
+  h2 { break-after: avoid; }
+  .ex, figure { break-inside: avoid; }
+  .small { font-size: 8.6pt; color: #4a5a6e; }
+  .break { page-break-before: always; }
+</style>
+</head>
+<body>
+
+<h1>VLM の指示で荷物まで歩く四足ロボット</h1>
+<p class="lead">Physical AI 応用1講座 最終課題 説明資料 ／ シミュレータ: Genesis(Unitree Go2)／ AI: 強化学習(歩行)+ VLM(判断)</p>
+
+<h2>1. 概要と目的</h2>
+<p>日本語で「赤い荷物のところまで歩いて、近くまで来たら止まって」と指示すると、ロボットが画像を見て荷物を見つけ、近づいて止まる動作を作りました。
+指示の色を変えれば目指す荷物が変わり、荷物が見えない向きから始めても、回って探します。
+目的は、「ロボットの動かし方(歩行)」と「何をするかの判断(言語・画像の理解)」を分け、
+それぞれに合った AI を組み合わせて、言葉で動かせるロボットの最小の形を作ることです。</p>
+
+<h2>2. システム構成</h2>
+<div class="flow">
+  <div class="box"><b>日本語の指示</b>+ カメラ画像<br>(1秒ごと)</div><div class="arr">▶</div>
+  <div class="box"><b>VLM ({{MODEL}})</b>画像だけから<br>前進 / 左 / 右 / 停止 を選ぶ</div><div class="arr">▶</div>
+  <div class="box"><b>速度の指令</b>前進 0.5 m/s<br>旋回 ±0.6 rad/s</div><div class="arr">▶</div>
+  <div class="box"><b>歩行方策</b>強化学習 (PPO)<br>で学習済み</div><div class="arr">▶</div>
+  <div class="box"><b>Go2</b>Genesis 上で<br>12関節を制御</div>
+</div>
+<ul>
+  <li><b>歩行(学習あり)</b>: Genesis の Go2 歩行サンプルを使い、Google Colab(GPU)で 4096 並列・300 回学習。速度指令として、前進 0〜0.8 m/s、旋回 −1〜1 rad/s をランダムに与えて学習し、指令に追従して歩くようにしました。</li>
+  <li><b>判断(推論のみ)</b>: Gemini に、指示文と画像を渡し、行動(前進/左/右/停止)と理由を JSON で返させます(温度 0、行動は選択肢に限定)。ロボットや荷物の<b>座標は一切渡さず</b>、画像だけで判断させています。</li>
+  <li>画像は、ロボットの後ろ上方から進行方向を見たもので、動画の画面そのものです(ロボット自身に載ったカメラではありません)。</li>
+</ul>
+
+<h2>3. 工夫した点</h2>
+<ul>
+  <li><b>役割の分離</b>: 足の動かし方は学習済みの方策に任せ、VLM は「どちらへ進むか」だけを決めます。VLM の判断が1秒に1回でも、歩行は滑らかに続きます。</li>
+  <li><b>指示の切り替えと探索</b>: 同じ場所・同じ景色で指示の色だけを変える(B)、荷物が視界にない向きから探す(C1)、1回の動作の途中で指示を変える(C2)、目の前の別の色の箱を無視して後ろの荷物を探す(D)を用意し、画像と言葉の両方を使っていることが分かるようにしました。</li>
+  <li><b>プロンプトの改善</b>: 最初は「箱が大きく見えたら止まる」としましたが、後ろからの視点では近づいても箱がほとんど大きくならず、Gemini は止まれずに箱へ押し付けました。そこで、画面上の見え方で書き直し(「箱の下の端が、ロボットの背中の高さに届いたら止まる」)、ぶつかる前に止まれるようになりました。</li>
+  <li><b>止まる位置の安全側への調整</b>: 判断が1秒ごとなので、止まる合図から実際に止まるまで約 0.5 m 進みます。合図を、箱の少し手前(約 1.4 m)に相当する見え方に設定し、止まったあとの旋回で箱に当たりにくくしました(実際の停止は、箱の 1.6〜1.8 m 手前でした)。</li>
+  <li><b>実行環境の工夫</b>: Colab では描画が動かないため、学習だけを Colab(描画を無効化)で行い、動画の撮影は手元の PC(GPU なし)で行う分業にしました。</li>
+  <li><b>API の制限への対策</b>: 無料枠(1分5回、1日20回)に合わせ、呼び出しの間隔の制御、混雑時のやり直し、シーンの分割(Cを C1/C2 に分割)を入れ、失敗したシーンが動画に混ざらない仕組みにしました。</li>
+</ul>
+
+<h2 class="break">4. 動画の構成と結果</h2>
+<p>動画は、説明の画面、各シーン(タイトル画面つき)、まとめの画面の構成で、合計約 {{TOTAL_SEC}} 秒のシーン映像を含みます。倍速再生は使っていません(等倍)。
+VLM の応答を待つ間はシミュレーションを止めているため、映像は途切れずに進みます。</p>
+<table>
+  <tr><th style="width:9%">シーン</th><th>内容</th><th style="width:13%">Gemini の<br>呼び出し</th><th style="width:25%">止まった位置</th><th style="width:11%">映像</th></tr>
+  {{ROWS}}
+</table>
+<p class="small">「止まった位置」は、Gemini が「停止」を選んだ時点の、目的の箱の中心までの距離です(箱は一辺 0.4 m)。呼び出しの合計は {{TOTAL_CALLS}} 回です。</p>
+<div class="grid">{{THUMBS}}</div>
+<p class="small">各シーンで、止まった直後の画面です。</p>
+
+<h2>5. Gemini の判断の例</h2>
+{{EXAMPLE}}
+<p class="small">理由の文章は、Gemini が書いたものをそのまま載せています(指示文は日本語、画像は画面のとおり)。</p>
+
+<h2>6. AI の使用について</h2>
+<ul>
+  <li>歩行: 強化学習(PPO)で学習しました(学習あり)。</li>
+  <li>判断: Gemini(推論のみ、学習・ファインチューニングなし)。</li>
+  <li>開発中の動作確認には、Gemini を使わず、位置から判断を計算する「モック」を使いました。提出する動画は、すべて Gemini の判断によるものです。</li>
+</ul>
+
+<h2>7. 制限と今後</h2>
+<ul>
+  <li>シミュレーションのみで、荷物は固定された箱です。実機に使うには、実際のカメラ画像への対応と、歩行方策の実機への適用が必要です。</li>
+  <li>歩行方策は、学習回数が短いため、速い旋回と前進の同時指令では不安定になります。指令を控えめにして対処しました。学習を長くすれば、改善が見込めます。</li>
+  <li>VLM の判断は、実行ごとに少し変わります(途中で左右にふらつく場面があります)。結果は、ここに載せた実行のものです。</li>
+  <li>今後は、ロボットの頭部にカメラを載せた視点への変更、荷物をつかむ・運ぶ動作、複数の荷物からの選択に広げたいです。倉庫や施設での、言葉で頼める搬送ロボットの入口になると考えています。</li>
+</ul>
+
+<p class="small">コード・学習済みモデル・実行ログ・再現手順は、提出した GitHub リポジトリ(README)にあります。</p>
+</body>
+</html>

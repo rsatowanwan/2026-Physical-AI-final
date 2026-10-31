@@ -1,0 +1,8 @@
+genesis-world==1.4.4
+rsl-rl-lib>=5.0.0
+torch
+tensorboard
+imageio
+imageio-ffmpeg
+pillow
+google-genai
